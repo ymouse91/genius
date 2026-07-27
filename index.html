@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Genius Square</title>
+<meta name="theme-color" content="#4a90e2">
+<meta name="description" content="Genius Square - yksinpelattava PWA-peli">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Genius Square">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<style>
+  :root {
+    --cell: clamp(38px, 12.5vmin, 52px);
+    --mini: clamp(9px, 2.2vmin, 13px);
+  }
+  * { box-sizing: border-box; }
+  html, body { max-width: 100%; overflow-x: hidden; }
+  body { font-family: -apple-system, sans-serif; background: #f0f2f5; text-align: center; padding: 12px; margin: 0; }
+  h1 { color: #222; margin: 4px 0 12px; font-size: clamp(19px, 4vmin, 24px); }
+
+  #status {
+    background: white; padding: 12px 16px; border-radius: 8px;
+    border-left: 5px solid #4a90e2; box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    max-width: min(520px, 92vw); margin: 0 auto 14px auto; font-size: 15px; line-height: 1.4;
+    min-height: 5.6em; display: flex; flex-direction: column; justify-content: center; gap: 4px;
+  }
+  .status-title { font-weight: 700; }
+  .status-rule { font-size: 13px; color: #777; }
+  .status-msg { color: #333; }
+
+  .controls { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px; margin-bottom: 12px; }
+  .btn-clear { background: #7f8c8d; box-shadow: 0 3px 0 #5f6a6b; }
+  .dice-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; margin-left: 4px; cursor: pointer; vertical-align: middle; }
+  .dice-toggle input { width: 16px; height: 16px; cursor: pointer; }
+  .btn {
+    background: #4a90e2; color: white; border: none; padding: 10px 20px;
+    font-size: 16px; border-radius: 6px; cursor: pointer; margin: 4px;
+    box-shadow: 0 3px 0 #357abd;
+  }
+  .btn:active { transform: translateY(3px); box-shadow: none; }
+  .btn-small { padding: 8px 14px; font-size: 14px; box-shadow: 0 3px 0 #357abd; }
+  select { padding: 9px; font-size: 15px; border-radius: 6px; border: 1px solid #ccc; margin: 4px; }
+
+  .board {
+    display: grid; grid-template-columns: repeat(6, var(--cell)); grid-template-rows: repeat(6, var(--cell));
+    gap: 2px; justify-content: center; background: #ccc; padding: 5px; border-radius: 8px;
+    width: fit-content; margin: 0 auto 16px auto;
+  }
+  .cell {
+    width: var(--cell); height: var(--cell); background: white; display: flex;
+    align-items: center; justify-content: center; font-weight: bold;
+    font-size: clamp(10px, 2.4vmin, 13px); cursor: pointer; user-select: none; border-radius: 3px; color: #555;
+  }
+  .cell.blocked { background: #b0b0b0; color: white; }
+  .cell.filled { animation: pop 0.15s; }
+  .cell.hoverable:hover { outline: 2px solid #4a90e2; }
+  @keyframes pop { from { transform: scale(0.75); } to { transform: scale(1); } }
+
+  #paletteWrap { max-width: min(560px, 94vw); margin: 0 auto; }
+  .palette { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 8px; }
+  .piece-card {
+    background: white; border-radius: 8px; padding: 5px; cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.15); border: 3px solid transparent;
+    position: relative;
+  }
+  .piece-card.selected { border-color: #333; transform: scale(1.06); }
+  .piece-card.used { opacity: 0.25; pointer-events: none; }
+  .mini-grid { display: grid; gap: 2px; }
+  .mini-cell { width: var(--mini); height: var(--mini); border-radius: 2px; background: #eee; position: relative; }
+  .mini-cell.on { background: var(--pc); }
+  .mini-cell.on.marked::after, .cell.filled.marked::after {
+    content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 40%; height: 40%; border-radius: 50%; background: white; box-shadow: 0 0 0 1px rgba(0,0,0,0.2);
+  }
+  .cell.filled { position: relative; }
+
+  .palette-row2 .btn-small:disabled { opacity: 0.35; cursor: default; box-shadow: none; }
+  .palette-row2 { display: flex; gap: 8px; justify-content: center; align-items: center; margin-top: 4px; }
+
+  .modal {
+    display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.7); justify-content: center; align-items: center; z-index: 999;
+  }
+  .modal-content { background: white; padding: 30px; border-radius: 10px; text-align: center; max-width: 88vw; }
+
+  /* iPadin (ja muiden leveiden näyttöjen) vaakatila: lauta ja paletti rinnakkain */
+  @media (min-width: 860px) and (orientation: landscape) {
+    :root {
+      --cell: clamp(60px, 8.4vmin, 70px);
+      --mini: clamp(11px, 1.75vmin, 14px);
+    }
+
+    body { padding: 14px; }
+
+    #layout {
+      display: grid;
+      grid-template-columns: auto minmax(300px, 420px);
+      grid-template-areas:
+        "board status"
+        "board controls"
+        "board palette";
+      column-gap: 32px; row-gap: 12px;
+      align-items: start; justify-content: center;
+      max-width: 1040px; margin: 0 auto;
+    }
+    #status { grid-area: status; max-width: none; margin: 0; min-height: 7.2em; }
+    .controls { grid-area: controls; justify-content: flex-start; margin: 0; }
+    .board { grid-area: board; margin: 0; }
+    #paletteWrap { grid-area: palette; max-width: none; margin: 0; }
+    .palette, .palette-row2 { justify-content: flex-start; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Genius Square</h1>
+
+<div id="layout">
+  <div id="status"><strong>OHJE:</strong> Paina "Aloita alusta" aloittaaksesi! Napauta laudalla olevaa palaa poistaaksesi sen.</div>
+
+  <div class="controls">
+    <button class="btn" onclick="startNewRun()">🎲 Aloita alusta</button>
+    <button class="btn btn-clear" onclick="clearBoard()">🧹 Tyhjennä lauta</button>
+    <label class="dice-toggle">
+      <input type="checkbox" id="officialDiceToggle" onchange="onDiceModeChange()">
+      Käytä virallisia noppia
+    </label>
+  </div>
+
+  <div class="board" id="board"></div>
+
+  <div id="paletteWrap">
+    <div class="palette" id="palette"></div>
+    <div class="palette-row2" id="paletteRow2"></div>
+  </div>
+</div>
+
+<div id="winModal" class="modal">
+  <div class="modal-content">
+    <h2 id="winTitle">🏆 Voitto!</h2>
+    <p id="winText">Lauta on täynnä.</p>
+    <button class="btn" id="winButton" onclick="closeModal()">Seuraava taso</button>
+  </div>
+</div>
+
+<script>
+// --- Palamääritykset -----------------------------------------------------
+// category: 1 = monomino, 2 = domino, 3 = trimino, 4 = tetromino
+// Yhteensä 1+2+3+3+4*5 = 29 ruutua = 36 - 7 estettä
+const PIECES = [
+  { id: 1, category: 1, color: '#2c3e50', shape: [[0,0]] },
+  { id: 2, category: 2, color: '#16a085', shape: [[0,0],[0,1]] },
+  { id: 3, category: 3, color: '#e74c3c', shape: [[0,0],[0,1],[0,2]] },        // suora trimino
+  { id: 4, category: 3, color: '#f39c12', shape: [[0,0],[0,1],[1,0]] },        // kulmatrimino
+  { id: 5, category: 4, color: '#8e44ad', shape: [[0,0],[0,1],[0,2],[0,3]] },  // I-tetromino
+  { id: 6, category: 4, color: '#2980b9', shape: [[0,0],[0,1],[1,0],[1,1]] },  // O-tetromino
+  { id: 7, category: 4, color: '#27ae60', shape: [[0,0],[0,1],[0,2],[1,1]] },  // T-tetromino
+  { id: 8, category: 4, color: '#d35400', shape: [[0,1],[0,2],[1,0],[1,1]] },  // S-tetromino
+  { id: 9, category: 4, color: '#c0392b', shape: [[0,0],[1,0],[2,0],[2,1]] },  // L-tetromino
+];
+
+// Vahvistettu sääntökirjan kuvasta. Vaikeusjärjestys (helpoimmasta vaikeimpaan) EI ole nimien mukainen:
+// Starter(ei rajoituksia) < Junior(1,2) < Expert(1,2,3) < Master(2,3,4) < Wizard(1,2,3,4)
+// "1"=yksittäisruutu(id1), "2"=domino(id2), "3"=suora trimino(id3), "4"=L-tetromino(id4)
+const RESTRICTED_PIECE_IDS = [1, 2, 3, 4];
+const FORBIDDEN_LEVELS = [
+  [],           // Starter
+  [1, 2],       // Junior
+  [1, 2, 3],    // Expert
+  [2, 3, 4],    // Master
+  [1, 2, 3, 4], // Wizard
+];
+
+const LEVEL_NAMES = ['Starter', 'Junior', 'Expert', 'Master', 'Wizard'];
+const MIN_MOVES_PER_LEVEL = 9;               // 9 palaa = vähintään 9 sijoitusta per taso
+const MIN_MOVES_TOTAL = MIN_MOVES_PER_LEVEL * LEVEL_NAMES.length; // 45
+
+let state = { blockers: [], placed: {}, selectedId: null, orient: {}, level: 0, movesThisLevel: 0, totalMoves: 0, useOfficialDice: false };
+
+function normalize(shape) {
+  const minR = Math.min(...shape.map(c=>c[0]));
+  const minC = Math.min(...shape.map(c=>c[1]));
+  return shape.map(([r,c]) => [r-minR, c-minC]);
+}
+function rotateShape(shape) { return normalize(shape.map(([r,c]) => [c, -r])); }
+function flipShape(shape) { return normalize(shape.map(([r,c]) => [r, -c])); }
+
+// Kaikki kunkin palan uniikit asennot (kierrot + peilaukset), esilaskettu suorituskykyä varten.
+function computeOrientations(shape) {
+  const variants = [];
+  const seen = new Set();
+  for (let f = 0; f < 2; f++) {
+    let s = normalize(f === 0 ? shape : flipShape(shape));
+    for (let r = 0; r < 4; r++) {
+      const key = JSON.stringify(s.slice().sort((a,b) => a[0]-b[0] || a[1]-b[1]));
+      if (!seen.has(key)) { seen.add(key); variants.push(s); }
+      s = rotateShape(s);
+    }
+  }
+  return variants;
+}
+const PIECE_ORIENTATIONS = {};
+PIECES.forEach(p => PIECE_ORIENTATIONS[p.id] = computeOrientations(p.shape));
+
+// --- Ratkaistavuuden tarkistus (backtracking) -----------------------------
+// Varmistaa ennen kunkin tason näyttämistä, että arvottu este-asetelma on
+// oikeasti ratkaistavissa kyseisen tason kosketuskielloilla. Jos ei ole,
+// arvotaan esteet uudelleen. Näin vältetään fyysisestä pelistä poiketen
+// mahdottomat asetelmat, koska emme käytä virallisia käsin viritettyjä noppia.
+function isSolvable(blockers, level) {
+  const restricted = FORBIDDEN_LEVELS[level];
+  const blockedSet = new Set(blockers);
+
+  function findEmptyCell(placedMap) {
+    for (let r = 0; r < 6; r++) {
+      for (let c = 0; c < 6; c++) {
+        const coord = `${String.fromCharCode(65+c)}${r+1}`;
+        if (!blockedSet.has(coord) && placedMap[coord] === undefined) return coord;
+      }
+    }
+    return null;
+  }
+
+  function touchesForbiddenSim(pieceId, coord, ownCells, placedMap) {
+    if (!restricted.includes(pieceId)) return false;
+    for (const n of getNeighbors(coord)) {
+      if (ownCells.includes(n)) continue;
+      const occ = placedMap[n];
+      if (occ !== undefined && restricted.includes(occ)) return true;
+    }
+    return false;
+  }
+
+  function backtrack(placedMap, usedIds) {
+    const cell = findEmptyCell(placedMap);
+    if (!cell) return true; // kaikki ruudut täytetty
+
+    const targetCol = cell.charCodeAt(0) - 65;
+    const targetRow = parseInt(cell.slice(1)) - 1;
+
+    for (const piece of PIECES) {
+      if (usedIds.has(piece.id)) continue;
+      for (const shape of PIECE_ORIENTATIONS[piece.id]) {
+        for (let i = 0; i < shape.length; i++) {
+          const [dRow, dCol] = shape[i];
+          const offRow = targetRow - dRow;
+          const offCol = targetCol - dCol;
+          const cellsUsed = [];
+          let valid = true;
+
+          for (let j = 0; j < shape.length; j++) {
+            const row = offRow + shape[j][0];
+            const col = offCol + shape[j][1];
+            if (row < 0 || row > 5 || col < 0 || col > 5) { valid = false; break; }
+            const coord = `${String.fromCharCode(65+col)}${row+1}`;
+            if (blockedSet.has(coord) || placedMap[coord] !== undefined) { valid = false; break; }
+            if (touchesForbiddenSim(piece.id, coord, cellsUsed, placedMap)) { valid = false; break; }
+            cellsUsed.push(coord);
+          }
+          if (!valid) continue;
+
+          cellsUsed.forEach(c => placedMap[c] = piece.id);
+          usedIds.add(piece.id);
+          if (backtrack(placedMap, usedIds)) return true;
+          cellsUsed.forEach(c => delete placedMap[c]);
+          usedIds.delete(piece.id);
+        }
+      }
+    }
+    return false;
+  }
+
+  return backtrack({}, new Set());
+}
+
+// Viralliset 7 noppaa, kukin 6 sivulla. Osassa nopista on toistuvia arvoja
+// (esim. noppa 4: F1/A6 vain kahdella eri arvolla), täsmälleen kuten fyysisessä pelissä.
+const OFFICIAL_DICE = [
+  ['C3','D3','E3','B4','C4','D4'],
+  ['A1','C1','D1','E2','D2','F3'],
+  ['A2','B2','C2','B1','B3','A3'],
+  ['E1','F2','F2','A5','A5','B6'],
+  ['F1','F1','F1','A6','A6','A6'],
+  ['A4','B5','C5','C6','D6','F6'],
+  ['F4','E4','D5','E5','F5','E6'],
+];
+
+function rollOfficialDice() {
+  const set = new Set();
+  OFFICIAL_DICE.forEach(die => set.add(die[Math.floor(Math.random()*die.length)]));
+  return Array.from(set);
+}
+
+function randomBlockers() {
+  const blockers = [];
+  while (blockers.length < 7) {
+    const c = String.fromCharCode(65 + Math.floor(Math.random()*6));
+    const r = Math.floor(Math.random()*6) + 1;
+    const key = c+r;
+    if (!blockers.includes(key)) blockers.push(key);
+  }
+  return blockers;
+}
+
+function generateSolvableBlockers(level) {
+  for (let attempt = 0; attempt < 300; attempt++) {
+    const blockers = state.useOfficialDice ? rollOfficialDice() : randomBlockers();
+    if (isSolvable(blockers, level)) return blockers;
+  }
+  return state.useOfficialDice ? rollOfficialDice() : randomBlockers(); // äärimmäisen epätodennäköinen varatie
+}
+
+function getShape(piece) {
+  const o = state.orient[piece.id] || { rot: 0, flip: false };
+  let s = piece.shape;
+  if (o.flip) s = flipShape(s);
+  for (let i = 0; i < o.rot; i++) s = rotateShape(s);
+  return normalize(s);
+}
+
+function init() {
+  PIECES.forEach(p => state.orient[p.id] = state.orient[p.id] || { rot: 0, flip: false });
+  createBoard();
+  renderPalette();
+  updateOrientButtons();
+  updateStatus(`Paina "Aloita alusta" aloittaaksesi! Napauta laudalla olevaa palaa poistaaksesi sen.`);
+}
+
+function createBoard() {
+  const board = document.getElementById('board');
+  board.innerHTML = '';
+  for (let r = 0; r < 6; r++) {
+    for (let c = 0; c < 6; c++) {
+      const coord = `${String.fromCharCode(65+c)}${r+1}`;
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.dataset.coord = coord;
+      cell.onclick = () => handleCellClick(coord);
+      board.appendChild(cell);
+    }
+  }
+}
+
+function startNewRun() {
+  state.level = 0;
+  state.totalMoves = 0;
+  startLevel();
+}
+
+function startLevel() {
+  state.blockers = [];
+  state.placed = {};
+  state.selectedId = null;
+  state.movesThisLevel = 0;
+  state.orient = {};
+  PIECES.forEach(p => { state.orient[p.id] = { rot: 0, flip: false }; p.usedAt = false; });
+  document.getElementById('winModal').style.display = 'none';
+  updateOrientButtons();
+
+  state.blockers = generateSolvableBlockers(state.level);
+
+  renderBoard();
+  renderPalette();
+  updateStatus(`Nopat: ${state.blockers.join(', ')}. Valitse pala paletista.`);
+}
+
+function clearBoard() {
+  state.placed = {};
+  state.selectedId = null;
+  PIECES.forEach(p => p.usedAt = false);
+  renderBoard();
+  renderPalette();
+  updateOrientButtons();
+  updateStatus(`Lauta tyhjennetty, esteet pysyivät samoina. Käytetyt siirrot eivät palautuneet.`);
+}
+
+function onDiceModeChange() {
+  state.useOfficialDice = document.getElementById('officialDiceToggle').checked;
+}
+
+function renderBoard() {
+  document.querySelectorAll('.cell').forEach(cell => {
+    const coord = cell.dataset.coord;
+    cell.className = 'cell';
+    cell.innerText = '';
+    cell.style.background = '';
+    if (state.blockers.includes(coord)) {
+      cell.classList.add('blocked');
+    } else if (state.placed[coord]) {
+      cell.style.background = state.placed[coord].color;
+      cell.classList.add('filled', 'hoverable');
+      if (FORBIDDEN_LEVELS[state.level].includes(state.placed[coord].pid)) {
+        cell.classList.add('marked');
+      }
+    } else {
+      cell.style.background = 'white';
+      cell.classList.add('hoverable');
+    }
+  });
+}
+
+function pieceGridSize(piece) {
+  // Palan omaan perusmuotoon (ei nykyiseen kiertoon) perustuva suurin sivumitta.
+  // Kierto vain vaihtaa korkeuden ja leveyden keskenään, joten tämä riittää
+  // kattamaan palan KAIKKI mahdolliset asennot ilman että kortin koko muuttuu.
+  const h = Math.max(...piece.shape.map(c=>c[0])) + 1;
+  const w = Math.max(...piece.shape.map(c=>c[1])) + 1;
+  return Math.max(h, w);
+}
+
+function createPieceCard(p) {
+  const used = !!p.usedAt;
+  const card = document.createElement('div');
+  card.className = 'piece-card' + (used ? ' used' : '') + (state.selectedId === p.id ? ' selected' : '');
+  card.dataset.pid = p.id;
+  card.onclick = () => selectPiece(p.id);
+
+  const isRestrictedNow = FORBIDDEN_LEVELS[state.level].includes(p.id);
+
+  const shape = getShape(p);
+  const GRID = pieceGridSize(p); // vain tämän palan tarvitsema tila, ei kaikille sama 4x4
+  const shapeH = Math.max(...shape.map(c=>c[0])) + 1;
+  const shapeW = Math.max(...shape.map(c=>c[1])) + 1;
+  const rowOffset = Math.floor((GRID - shapeH) / 2);
+  const colOffset = Math.floor((GRID - shapeW) / 2);
+
+  const grid = document.createElement('div');
+  grid.className = 'mini-grid';
+  grid.style.gridTemplateColumns = `repeat(${GRID}, var(--mini))`;
+  grid.style.gridTemplateRows = `repeat(${GRID}, var(--mini))`;
+  grid.style.setProperty('--pc', p.color);
+
+  for (let r = 0; r < GRID; r++) {
+    for (let c = 0; c < GRID; c++) {
+      const cell = document.createElement('div');
+      const on = shape.some(([sr,sc]) => sr + rowOffset === r && sc + colOffset === c);
+      cell.className = 'mini-cell' + (on ? ' on' : '') + (on && isRestrictedNow ? ' marked' : '');
+      cell.style.setProperty('--pc', p.color);
+      grid.appendChild(cell);
+    }
+  }
+  card.appendChild(grid);
+  return card;
+}
+
+// Leveä vaakanäyttö (esim. iPad landscape): siirretään myös pala 7 toiselle riville,
+// jotta ensimmäinen rivi mahtuu yhdelle riville kapeassa oikeassa sarakkeessa ja
+// statuslaatikolle jää enemmän pystytilaa.
+const WIDE_LAYOUT_QUERY = window.matchMedia('(min-width: 860px) and (orientation: landscape)');
+const COMPACT_PORTRAIT_QUERY = window.matchMedia('(max-width: 520px) and (orientation: portrait)');
+
+function paletteSplitId() {
+  return (WIDE_LAYOUT_QUERY.matches || COMPACT_PORTRAIT_QUERY.matches) ? 6 : 7;
+}
+
+function renderPalette() {
+  const palette = document.getElementById('palette');
+  const row2 = document.getElementById('paletteRow2');
+  palette.innerHTML = '';
+  row2.innerHTML = '';
+
+  const splitCount = paletteSplitId();
+  PIECES.forEach((p, idx) => {
+    const card = createPieceCard(p);
+    if (idx < splitCount) palette.appendChild(card); else row2.appendChild(card);
+  });
+
+  const flipBtn = document.createElement('button');
+  flipBtn.id = 'flipBtn';
+  flipBtn.className = 'btn btn-small';
+  flipBtn.textContent = '⇋ Peilaa';
+  flipBtn.onclick = flipPiece;
+  row2.appendChild(flipBtn);
+
+  updateOrientButtons();
+}
+
+WIDE_LAYOUT_QUERY.addEventListener('change', renderPalette);
+COMPACT_PORTRAIT_QUERY.addEventListener('change', renderPalette);
+
+function selectPiece(id) {
+  const piece = PIECES.find(p => p.id === id);
+  if (piece.usedAt) return;
+
+  if (state.selectedId === id) {
+    rotatePiece(); // jo valittua palaa klikattaessa käännetään 90 astetta
+    return;
+  }
+
+  state.selectedId = id;
+  updateOrientButtons();
+  renderPalette();
+  updateStatus(`Pala valittu. Käännä/peilaa tarvittaessa ja napauta ruutua.`);
+}
+
+function updateOrientButtons() {
+  const flipBtn = document.getElementById('flipBtn');
+  if (flipBtn) flipBtn.disabled = !(state.selectedId === 8 || state.selectedId === 9);
+}
+
+function rotatePiece() {
+  if (!state.selectedId) return;
+  const o = state.orient[state.selectedId] || (state.orient[state.selectedId] = { rot: 0, flip: false });
+  o.rot = (o.rot + 1) % 4;
+  renderPalette();
+}
+
+function flipPiece() {
+  if (!state.selectedId) return;
+  const o = state.orient[state.selectedId] || (state.orient[state.selectedId] = { rot: 0, flip: false });
+  o.flip = !o.flip;
+  renderPalette();
+}
+
+function handleCellClick(targetCoord) {
+  if (state.blockers.includes(targetCoord)) return;
+
+  // Klikkaus jo asetettuun palaan poistaa sen laudalta takaisin paletiin.
+  if (state.placed[targetCoord]) {
+    removePieceAt(targetCoord);
+    return;
+  }
+
+  if (!state.selectedId) return;
+
+  const piece = PIECES.find(p => p.id === state.selectedId);
+  const cells = tryPlace(piece, targetCoord);
+
+  if (cells) {
+    cells.forEach(c => { state.placed[c] = { pid: piece.id, color: piece.color }; });
+    piece.usedAt = true;
+    state.selectedId = null;
+    state.movesThisLevel++;
+    state.totalMoves++;
+    updateOrientButtons();
+    renderBoard();
+    renderPalette();
+    checkWin();
+    updateStatus(`Siirto ${state.movesThisLevel} käytetty tällä tasolla.`);
+  } else {
+    updateStatus(`Pala ei mahdu tähän kohtaan (tila loppui tai kielletty kosketus). Yritä toista ruutua tai käännä palaa.`);
+  }
+}
+
+function removePieceAt(coord) {
+  const pid = state.placed[coord].pid;
+  Object.keys(state.placed).forEach(c => {
+    if (state.placed[c].pid === pid) delete state.placed[c];
+  });
+  const piece = PIECES.find(p => p.id === pid);
+  piece.usedAt = false;
+  renderBoard();
+  renderPalette();
+  updateStatus(`Pala poistettu laudalta. ${29 - Object.keys(state.placed).length} ruutua jäljellä.`);
+}
+
+function tryPlace(piece, targetCoord) {
+  const shape = getShape(piece);
+  const targetCol = targetCoord.charCodeAt(0) - 65;       // kirjain A-F -> 0-5
+  const targetRow = parseInt(targetCoord.slice(1)) - 1;   // numero 1-6 -> 0-5
+
+  for (let i = 0; i < shape.length; i++) {
+    const [dRow, dCol] = shape[i];
+    const offRow = targetRow - dRow;
+    const offCol = targetCol - dCol;
+
+    const cells = [];
+    let valid = true;
+
+    for (let j = 0; j < shape.length; j++) {
+      const row = offRow + shape[j][0];
+      const col = offCol + shape[j][1];
+      if (row < 0 || row > 5 || col < 0 || col > 5) { valid = false; break; }
+      const coord = `${String.fromCharCode(65+col)}${row+1}`;
+      if (state.blockers.includes(coord) || state.placed[coord]) { valid = false; break; }
+      if (touchesForbidden(piece.id, coord, cells)) { valid = false; break; }
+      cells.push(coord);
+    }
+
+    if (valid) return cells;
+  }
+  return null;
+}
+
+function touchesForbidden(pieceId, coord, ownCellsSoFar) {
+  const restricted = FORBIDDEN_LEVELS[state.level];
+  if (!restricted.includes(pieceId)) return false;
+
+  for (const n of getNeighbors(coord)) {
+    if (ownCellsSoFar.includes(n)) continue; // oma pala ei laske itseään vasten
+    const occ = state.placed[n];
+    if (occ && restricted.includes(occ.pid)) return true;
+  }
+  return false;
+}
+
+function getNeighbors(c) {
+  const r = c.charCodeAt(0) - 65;
+  const col = parseInt(c.slice(1)) - 1;
+  const res = [];
+  [[0,1],[0,-1],[1,0],[-1,0]].forEach(([dr, dc]) => {
+    const nr = r+dr, nc = col+dc;
+    if (nr>=0 && nr<6 && nc>=0 && nc<6) res.push(`${String.fromCharCode(65+nr)}${nc+1}`);
+  });
+  return res;
+}
+
+function checkWin() {
+  if (Object.keys(state.placed).length !== 29) return;
+
+  const isLastLevel = state.level === LEVEL_NAMES.length - 1;
+  const title = document.getElementById('winTitle');
+  const text = document.getElementById('winText');
+  const button = document.getElementById('winButton');
+
+  if (isLastLevel) {
+    title.innerText = '🏆 Koko peli läpäisty!';
+    text.innerText = `Ratkaisit kaikki ${LEVEL_NAMES.length} tasoa yhteensä ${state.totalMoves} siirrolla (minimi ${MIN_MOVES_TOTAL}).`;
+    button.innerText = 'Aloita alusta';
+  } else {
+    title.innerText = `✅ Taso ${LEVEL_NAMES[state.level]} ratkaistu!`;
+    text.innerText = `Käytit ${state.movesThisLevel} siirtoa tällä tasolla (minimi ${MIN_MOVES_PER_LEVEL}). Siirtoja yhteensä tähän mennessä: ${state.totalMoves} (minimi ${MIN_MOVES_PER_LEVEL * (state.level+1)}). Seuraava taso: ${LEVEL_NAMES[state.level+1]}.`;
+    button.innerText = `Seuraava taso: ${LEVEL_NAMES[state.level+1]}`;
+  }
+  document.getElementById('winModal').style.display = 'flex';
+}
+
+function closeModal() {
+  document.getElementById('winModal').style.display = 'none';
+  const isLastLevel = state.level === LEVEL_NAMES.length - 1;
+  if (isLastLevel) {
+    startNewRun();
+  } else {
+    state.level++;
+    startLevel();
+  }
+}
+
+// Selkokielinen kuvaus kunkin tason kosketuskiellosta (virallinen 1,2,3,4-numerointi)
+const LEVEL_RULE_TEXT = [
+  'Ei rajoituksia — kaikki palat saavat koskettaa toisiaan.',
+  'Palat, joissa on valkoinen piste, eivät saa koskea toisiaan.',
+  'Palat, joissa on valkoinen piste, eivät saa koskea toisiaan.',
+  'Palat, joissa on valkoinen piste, eivät saa koskea toisiaan.',
+  'Palat, joissa on valkoinen piste, eivät saa koskea toisiaan.',
+];
+
+function updateStatus(msg) {
+  const levelLabel = `${LEVEL_NAMES[state.level]} (${state.level+1}/${LEVEL_NAMES.length})`;
+  document.getElementById('status').innerHTML =
+    `<div class="status-title">Taso: ${levelLabel}</div>` +
+    `<div class="status-rule">${LEVEL_RULE_TEXT[state.level]}</div>` +
+    `<div class="status-msg">${msg}</div>`;
+}
+
+init();
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch((error) => {
+      console.warn('Service worker registration failed:', error);
+    });
+  });
+}
+</script>
+</body>
+</html>
