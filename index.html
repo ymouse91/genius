@@ -328,7 +328,7 @@ function init() {
   createBoard();
   renderPalette();
   updateOrientButtons();
-  updateStatus(`Paina "Aloita alusta" aloittaaksesi! Napauta laudalla olevaa palaa poistaaksesi sen.`);
+  updateStatus(`Paina "Aloita alusta" aloittaaksesi!`);
 }
 
 function createBoard() {
@@ -376,7 +376,7 @@ function clearBoard() {
   renderBoard();
   renderPalette();
   updateOrientButtons();
-  updateStatus(`Lauta tyhjennetty, esteet pysyivät samoina. Käytetyt siirrot eivät palautuneet.`);
+  updateStatus(`Lauta tyhjennetty, esteet pysyivät samoina.`);
 }
 
 function onDiceModeChange() {
@@ -543,7 +543,7 @@ function handleCellClick(targetCoord) {
     checkWin();
     updateStatus(`Siirto ${state.movesThisLevel} käytetty tällä tasolla.`);
   } else {
-    updateStatus(`Pala ei mahdu tähän kohtaan (tila loppui tai kielletty kosketus). Yritä toista ruutua tai käännä palaa.`);
+    updateStatus(`Pala ei sovi tähän kohtaan.`);
   }
 }
 
